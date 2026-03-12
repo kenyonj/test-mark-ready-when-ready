@@ -34,7 +34,7 @@ GitHub Actions single-line `echo "key=value"` syntax only captures the first lin
 } >> $GITHUB_OUTPUT
 ```
 
-### Bug 3: Script Injection via `pause-seconds` Input (Medium)
+### Bug 3: Script Injection via `pause-seconds` Input (Medium - Security)
 
 The pause step directly interpolates the input into a `run` block:
 
@@ -50,13 +50,35 @@ env:
 run: sleep "$PAUSE_SECONDS"
 ```
 
-### Bug 4: No Draft/Label Precondition Validation
+### Bug 4: GITHUB_TOKEN Cannot Mark PRs Ready (Confirmed in Testing)
+
+The default `GITHUB_TOKEN` fails with:
+
+```
+API call failed: GraphQL: Resource not accessible by integration (markPullRequestReadyForReview)
+```
+
+Even with `pull-requests: write` and repo-level "Allow GitHub Actions to create and approve pull requests" enabled, `GITHUB_TOKEN` cannot call the `markPullRequestReadyForReview` GraphQL mutation. The README mentions a GitHub App token workaround, but the primary example uses `secrets.GITHUB_TOKEN` which won't work. This is the most impactful usability issue - the default setup in the README is broken.
+
+### Bug 5: No Draft/Label Precondition Validation
 
 The action itself doesn't verify the PR is a draft or has the trigger label. It relies entirely on the calling workflow's `if` condition. If someone invokes the action without those guards, it would attempt to mark an already-ready PR as ready (which may error or no-op depending on `gh` version).
 
-### Bug 5: checkRuns Pagination Gap
+### Bug 6: checkRuns Pagination Gap
 
 The inner `checkRuns` query uses `first: 100` but doesn't paginate. If a single check suite has more than 100 check runs, some failing checks could be missed, leading to a false-green verification.
+
+## Test Results
+
+**Test environment:** [zkoppert/test-mark-ready-when-ready](https://github.com/zkoppert/test-mark-ready-when-ready)
+
+| Run | Step | Result | Notes |
+|-----|------|--------|-------|
+| 1 | `gh pr checks --required` | Fail | No required checks configured (branch protection needed) |
+| 2 | Check watching round 1 | Pass | After adding branch protection with required "Run tests" check |
+| 2 | Check watching round 2 | Pass | Second verification also passed |
+| 2 | GraphQL verification | Pass | Correctly identified no failing required checks |
+| 2 | `gh pr ready` | **Fail** | `GITHUB_TOKEN` cannot call `markPullRequestReadyForReview` |
 
 ## Testing
 
